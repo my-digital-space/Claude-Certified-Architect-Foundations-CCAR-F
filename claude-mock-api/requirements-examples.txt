@@ -1,0 +1,19 @@
+# Additional dependencies for running examples.py
+# Install with: pip install -r requirements-examples.txt
+
+# Core examples dependencies
+langchain-openai>=0.2.0
+openai>=1.54.0
+
+# Optional: Full LangChain ecosystem (for advanced use cases)
+# langchain>=0.3.0
+# langchain-community>=0.3.0
+# langchain-core>=0.3.0
+
+# Optional: LlamaIndex integration
+# llama-index>=0.11.0
+# llama-index-llms-openai>=0.2.0
+
+# Optional: Other AI frameworks
+# autogen>=0.2.0
+# crewai>=0.1.0
