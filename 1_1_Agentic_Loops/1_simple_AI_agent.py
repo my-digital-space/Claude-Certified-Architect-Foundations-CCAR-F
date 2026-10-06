@@ -424,28 +424,36 @@ def run_agent(user_input: str):
                 # Later we can replace this with a tool registry.
                 # ------------------------------------------------------------
 
-                if tool_name == "get_product_price":
+                # ------------------------------------------------------------
+                # Execute the tool, tolerating tool-level errors.
+                #
+                # A tool error does NOT crash the agent. In the real
+                # Anthropic API, a failed tool returns a tool_result with
+                # is_error=true. We mirror that: the error text becomes the
+                # ToolMessage content, so the next iteration gives Claude a
+                # chance to react to the failure.
+                # ------------------------------------------------------------
 
-                    tool_result = get_product_price.invoke(
-                        tool_args
+                try:
+                    if tool_name == "get_product_price":
+                        tool_result = get_product_price.invoke(tool_args)
+                    elif tool_name == "apply_discount":
+                        tool_result = apply_discount.invoke(tool_args)
+                    elif tool_name == "calculate_tax":
+                        tool_result = calculate_tax.invoke(tool_args)
+                    else:
+                        tool_result = (
+                            f"Unknown tool requested: {tool_name}"
+                        )
+
+                except Exception as exc:
+                    logger.warning(
+                        "Tool '%s' raised an error: %s",
+                        tool_name,
+                        exc
                     )
-
-                elif tool_name == "apply_discount":
-
-                    tool_result = apply_discount.invoke(
-                        tool_args
-                    )
-
-                elif tool_name == "calculate_tax":
-
-                    tool_result = calculate_tax.invoke(
-                        tool_args
-                    )
-
-                else:
-
-                    raise ValueError(
-                        f"Unknown tool requested: {tool_name}"
+                    tool_result = (
+                        f"Error: the tool '{tool_name}' failed with: {exc}"
                     )
 
                 # ------------------------------------------------------------

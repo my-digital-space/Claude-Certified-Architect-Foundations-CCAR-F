@@ -49,10 +49,12 @@ claude-mock-api/
 │   │   └── chat.py            # /v1/messages & /v1/chat/completions endpoints
 │   └── services/
 │       ├── __init__.py
-│       └── claude_cli.py      # Claude CLI wrapper with dual format support
+│       ├── claude_cli.py      # Claude CLI wrapper with dual format support
+│       └── tool_simulator.py  # Deterministic tool-use loop engine
 └── tests/
     ├── __init__.py
-    └── test_chat.py           # Compatibility & unit tests
+    ├── test_chat.py           # Compatibility & unit tests
+    └── test_tool_use.py       # Agentic tool-use loop tests
 ```
 
 ## Commands
@@ -176,6 +178,62 @@ response = client.chat.completions.create(
 
 print(response.choices[0].message.content)
 ```
+
+## Tool Use / Agentic Loop Support ⭐
+
+The `/v1/messages` endpoint **simulates a full Anthropic tool-use loop**, so a
+client agent (e.g. LangChain `ChatAnthropic`) can demonstrate the complete
+`request → tool_use → tool_result → request → tool_use → ... → end_turn`
+flow against this mock — no real Anthropic API required.
+
+### How it works
+
+The server is stateless and derives every decision from the incoming request:
+
+1. **Tools** — read from the request's `tools` array (names + JSON schemas).
+2. **State** — scans the assistant history for `tool_use` blocks to know which
+   tools have already been called.
+3. **Relevance** — matches the *original* user question against tool names and
+   descriptions to pick the next tool.
+4. **Decision per turn:**
+   - A relevant tool not yet called → return a `tool_use` block,
+     `stop_reason="tool_use"`.
+   - No relevant tool left → return a synthesized text answer built from the
+     collected `tool_result` blocks, `stop_reason="end_turn"`.
+
+Tool-call arguments are generated to match the provided `input_schema`
+(required fields always filled; string/number/bool/array handled generically),
+so it works with **any** tool set, not a hard-coded example.
+
+### What the client sees
+
+| Turn | Client sends | Server returns | `stop_reason` |
+|---|---|---|---|
+| 1 | task + `tools` | `[tool_use]` | `tool_use` |
+| 2 | task + `tool_result` | `[tool_use]` (next tool) or `[text]` | `tool_use` / `end_turn` |
+| 3+ | ... | ... | ... |
+
+### LangChain agent example
+
+```python
+from langchain_anthropic import ChatAnthropic
+
+llm = ChatAnthropic(
+    anthropic_api_url="http://localhost:8000",
+    anthropic_api_key="mock-api-key-001",
+    model_name="claude-3-5-sonnet-20241022",
+    tools=[get_weather, get_timezone],
+)
+
+# The agentic loop is driven by the client: keep sending until
+# response.response_metadata["stop_reason"] == "end_turn".
+```
+
+> Implementation lives in `app/services/tool_simulator.py`
+> (`ToolUseSimulator`) and is wired into `ask_claude_messages` in
+> `app/services/claude_cli.py`. Server logs show each decision
+> (request received, tools available, selected tool + args, tool results,
+> and whether it returns `tool_use` or `end_turn`).
 
 ## Switching Between Formats
 

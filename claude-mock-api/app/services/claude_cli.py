@@ -213,35 +213,115 @@ async def ask_claude_messages(
     system_prompt: str | None = None,
     max_tokens: int | None = None,
     model: str = "claude-3-5-sonnet-20241022",
+    tools: list[dict[str, Any]] | None = None,
+    messages: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Run Claude CLI and return a native Anthropic /v1/messages compatible response."""
-    cmd = _build_command(message, system_prompt=system_prompt, max_tokens=max_tokens)
-    logger.info("Invoking Claude CLI (Anthropic messages): %s", " ".join(cmd))
+    """Run Claude CLI and return a native Anthropic /v1/messages compatible response.
 
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
+    When tools are provided, this function simulates an agentic loop by:
+    1. Checking if tool use is appropriate given conversation state
+    2. Generating tool_use blocks with synthetic but valid arguments
+    3. Returning stop_reason: "tool_use" when tools should be executed
+    4. Detecting tool_result blocks and synthesizing final answers
+    5. Returning stop_reason: "end_turn" when the task is complete
+    """
+    from app.services.tool_simulator import ToolUseSimulator
 
-    response_text = stdout.decode(errors="replace").strip()
+    logger.info("=" * 70)
+    logger.info("📨 /v1/messages request received")
+    logger.info(f"   Messages in conversation: {len(messages) if messages else 0}")
+    logger.info(f"   Tools available: {len(tools) if tools else 0}")
 
-    # Only treat as error if we got no response
-    if not response_text:
-        error_text = stderr.decode(errors="replace").strip()
-        logger.error("Claude CLI failed (rc=%d): %s", proc.returncode, error_text)
-        raise RuntimeError(f"Claude CLI error: {error_text}")
+    if tools:
+        tool_names = [t.get('name', 'unknown') for t in tools]
+        logger.info(f"   Tool names: {', '.join(tool_names)}")
 
-    # Log stderr warnings but don't fail
-    if stderr:
-        stderr_text = stderr.decode(errors="replace").strip()
-        if stderr_text:
-            logger.warning("Claude CLI stderr (non-fatal): %s", stderr_text[:200])
+    # Initialize tool simulator
+    simulator = ToolUseSimulator(tools=tools)
+    conversation = messages or []
 
-    logger.info("Claude CLI responded (%d chars)", len(response_text))
+    # Decide if we should use tools or return final answer
+    should_use_tools = simulator.should_use_tools(conversation)
 
     msg_id = f"msg_{uuid.uuid4().hex[:24]}"
+
+    if should_use_tools:
+        # Generate tool use response
+        logger.info("🔧 Decision: TOOL_USE - will call a tool")
+
+        tool_calls = simulator.select_tools_to_call(conversation)
+
+        if not tool_calls:
+            logger.warning("⚠️  No tools selected despite should_use_tools=True, falling back to text response")
+            should_use_tools = False
+        else:
+            logger.info(f"✅ Generated {len(tool_calls)} tool call(s)")
+            for tc in tool_calls:
+                logger.info(f"   - {tc['name']}: {json.dumps(tc['input'])[:100]}")
+
+            # Return Anthropic-format response with tool_use blocks
+            return {
+                "id": msg_id,
+                "type": "message",
+                "role": "assistant",
+                "model": model,
+                "content": tool_calls,  # List of tool_use blocks
+                "stop_reason": "tool_use",
+                "stop_sequence": None,
+                "usage": {
+                    "input_tokens": max(1, len(message) // 4),
+                    "output_tokens": sum(len(json.dumps(tc)) for tc in tool_calls) // 4,
+                },
+            }
+
+    # If we reach here, we're generating a final text response
+    logger.info("💬 Decision: END_TURN - will generate final text response")
+
+    # Check if we have tool results to synthesize
+    has_tool_results = False
+    if messages:
+        last_msg = messages[-1]
+        if last_msg.get("role") == "user":
+            content = last_msg.get("content", "")
+            if isinstance(content, list):
+                has_tool_results = any(
+                    isinstance(block, dict) and block.get("type") == "tool_result"
+                    for block in content
+                )
+
+    if has_tool_results:
+        logger.info("📊 Tool results detected, synthesizing answer from results")
+        response_text = simulator.synthesize_final_response(conversation)
+    else:
+        # Fall back to Claude CLI for text generation
+        logger.info("🤖 No tool results, calling Claude CLI for text generation")
+        cmd = _build_command(message, system_prompt=system_prompt, max_tokens=max_tokens)
+        logger.info(f"   Command: {' '.join(cmd[:5])}...")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+
+        response_text = stdout.decode(errors="replace").strip()
+
+        # Only treat as error if we got no response
+        if not response_text:
+            error_text = stderr.decode(errors="replace").strip()
+            logger.error("Claude CLI failed (rc=%d): %s", proc.returncode, error_text)
+            raise RuntimeError(f"Claude CLI error: {error_text}")
+
+        # Log stderr warnings but don't fail
+        if stderr:
+            stderr_text = stderr.decode(errors="replace").strip()
+            if stderr_text:
+                logger.warning("Claude CLI stderr (non-fatal): %s", stderr_text[:200])
+
+        logger.info(f"✅ Claude CLI responded ({len(response_text)} chars)")
+
+    logger.info("=" * 70)
 
     return {
         "id": msg_id,

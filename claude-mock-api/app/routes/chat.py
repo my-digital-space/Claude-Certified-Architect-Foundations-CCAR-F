@@ -41,6 +41,7 @@ class AnthropicMessagesRequest(BaseModel):
     temperature: float | None = Field(default=None, ge=0.0, le=1.0)
     stream: bool = Field(default=False, description="Stream response via SSE")
     stop_sequences: list[str] | None = None
+    tools: list[dict[str, Any]] | None = Field(default=None, description="Available tools for tool use")
     metadata: dict[str, Any] | None = None
 
 
@@ -224,4 +225,6 @@ async def anthropic_messages(
         system_prompt=final_system,
         max_tokens=body.max_tokens,
         model=body.model,
+        tools=body.tools,
+        messages=messages_dicts,
     )
