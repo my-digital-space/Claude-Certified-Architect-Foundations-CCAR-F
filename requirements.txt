@@ -1,0 +1,15 @@
+# requirements.txt — Python dependencies for every project in this repo. 
+# 
+# These are the DIRECT dependencies only (the packages we import). Their own 
+# sub-dependencies are resolved automatically by pip. Versions are pinned with 
+# "==" so the environment is reproducible: anyone (or any machine) that runs 
+# pip install -r requirements.txt 
+# gets the exact same versions we developed against. 
+# 
+# Built against Python 3.14. 
+
+# Official Anthropic SDK — the Claude Messages API client and tool types. 
+anthropic==1.13.0 
+
+# Loads the shared .env file into the environment so we never hardcode secrets. 
+python-dotenv==1.2.4 
