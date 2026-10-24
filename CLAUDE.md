@@ -276,31 +276,31 @@ High-value facts this project demonstrates — the kind of thing the exam probes
 
 - **Env:** `.venv` + `anthropic` (1.13.0) + `python-dotenv` (1.2.4) installed; 
  `.env` wired via `load_dotenv(find_dotenv())`. Objective: reusable scaffolding. 
-- **Step 1 — tool definitions.** [step1_tools.py](1.1%20Agentic%20Loops/step1_tools.py) 
+- **Step 1 — tool definitions.** [step1_tools.py](1.%20Agentic%20Architecture%20&%20Orchestration/1.1%20Agentic%20Loops/step1_tools.py) 
  — client + two tools (`calculator`, `web_search` stub) with valid JSON Schema 
  `input_schema`. Teaches the `name`/`description`/`input_schema` trio and that 
  `description` drives selection. Verified by running it (prints both schemas; no 
  API call). 
-- **Step 2 — the loop + `stop_reason`.** [step2_agentic_loop.py](1.1%20Agentic%20Loops/step2_agentic_loop.py) 
+- **Step 2 — the loop + `stop_reason`.** [step2_agentic_loop.py](1.%20Agentic%20Architecture%20&%20Orchestration/1.1%20Agentic%20Loops/step2_agentic_loop.py) 
  — a loop that calls the API and branches on `stop_reason` (the authoritative 
  signal). Observes the `tool_use` block only, then stops (execution is Step 3). 
  Teaches stateless history + `stop_reason` control. Needs a real key to run. 
-- **Step 3 — the tool handoff.** [step3_handle_tool_use.py](1.1%20Agentic%20Loops/step3_handle_tool_use.py) 
+- **Step 3 — the tool handoff.** [step3_handle_tool_use.py](1.%20Agentic%20Architecture%20&%20Orchestration/1.1%20Agentic%20Loops/step3_handle_tool_use.py) 
  — on `tool_use`: append the full assistant turn, execute every `tool_use` block 
  (safe AST calculator; `eval()` rejected for security), return all `tool_result`s 
  in one user message with matching `tool_use_id`, then `continue` (no break) so 
  the loop proceeds to `end_turn`. Tool functions + unsafe-expression rejection 
  unit-tested offline. 
-- **Step 4 — return the final answer.** [step4_return_final_response.py](1.1%20Agentic%20Loops/step4_return_final_response.py) 
+- **Step 4 — return the final answer.** [step4_return_final_response.py](1.%20Agentic%20Architecture%20&%20Orchestration/1.1%20Agentic%20Loops/step4_return_final_response.py) 
  — refactored into `run_agent(prompt) -> str`; on `end_turn`, `extract_final_text` 
  joins ALL `type=="text"` blocks (not just the first) and RETURNS the answer. 
  `extract_final_text` unit-tested offline. 
-- **Step 5 — sequential (chained) tools.** [step5_sequential_tools.py](1.1%20Agentic%20Loops/step5_sequential_tools.py) 
+- **Step 5 — sequential (chained) tools.** [step5_sequential_tools.py](1.%20Agentic%20Architecture%20&%20Orchestration/1.1%20Agentic%20Loops/step5_sequential_tools.py) 
  — prompt that forces search → calculate-on-the-result. `web_search` stub gained 
  a canned, number-bearing knowledge base so the chain is real; `run_agent` 
  returns `{answer, iterations, tool_calls}` to verify >=2 tool iterations before 
  `end_turn`. Chain math verified offline. 
-- **Step 6 — safety cap backstop.** [step6_safety_cap.py](1.1%20Agentic%20Loops/step6_safety_cap.py) 
+- **Step 6 — safety cap backstop.** [step6_safety_cap.py](1.%20Agentic%20Architecture%20&%20Orchestration/1.1%20Agentic%20Loops/step6_safety_cap.py) 
  — `MAX_ITERATIONS = 20` with an explicit counter checked at the top of each 
  loop; on hit, logs a WARNING via `logging` and stops gracefully with 
  `capped: True`. `run_agent` made injectable (`client`/`max_iterations`), which 
